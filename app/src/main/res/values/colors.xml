@@ -2,4 +2,12 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="app_background">#F6F7F8</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="ink">#172026</color>
+    <color name="muted">#62717A</color>
+    <color name="primary">#147D64</color>
+    <color name="primary_dark">#0F5E4B</color>
+    <color name="warning">#B7791F</color>
+    <color name="danger">#B42318</color>
 </resources>
