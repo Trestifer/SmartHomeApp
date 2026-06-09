@@ -1,3 +1,70 @@
 <resources>
     <string name="app_name">Pet Feeder</string>
+    <string name="hint_device_code">Device code</string>
+    <string name="btn_load">Load</string>
+    <string name="title_device">Device</string>
+    <string name="text_no_device">No device loaded</string>
+    <string name="title_feed_now">Feed now</string>
+    <string name="portion_small">Small</string>
+    <string name="portion_medium">Medium</string>
+    <string name="portion_large">Large</string>
+    <string name="title_schedules">Schedules</string>
+    <string name="hint_time">HH:mm</string>
+    <string name="btn_add_schedule">Add schedule</string>
+    <string name="btn_reset_wifi">Reset Wi-Fi</string>
+    <string name="title_feeding_history">Feeding history</string>
+    <string name="title_device_logs">Device logs</string>
+
+    <!-- Java Strings -->
+    <string name="err_enter_device_code">Enter a device code.</string>
+    <string name="default_device_name">Pet feeder</string>
+    <string name="no_last_seen">No last seen time</string>
+    <string name="device_status_fmt">Status: %1$s\nLast seen: %2$s</string>
+    <string name="offline_warning_fmt">Warning: device is %1$s. Commands may not run immediately.</string>
+    <string name="no_schedules">No schedules yet.</string>
+    <string name="schedule_title_fmt">Schedule #%1$d</string>
+    <string name="status_active">Active</string>
+    <string name="status_inactive">Inactive</string>
+    <string name="schedule_meta_fmt">Created: %1$s\nUpdated: %2$s</string>
+    <string name="btn_update">Update</string>
+    <string name="btn_delete">Delete</string>
+    <string name="no_feeding_history">No feeding history.</string>
+    <string name="no_device_logs">No device logs.</string>
+    <string name="err_choose_portion">Choose a portion size before feeding.</string>
+    <string name="warn_device_offline">Device is offline. The command may stay pending.</string>
+    <string name="status_sending_feed">Sending feed command...</string>
+    <string name="command_status_fmt">Command #%1$d: %2$s</string>
+    <string name="err_invalid_time_fmt">Feed time is required in HH:mm format.</string>
+    <string name="err_schedule_conflict">Schedules must be at least 5 minutes apart.</string>
+    <string name="dialog_title_delete">Delete schedule</string>
+    <string name="dialog_msg_delete">Delete schedule #%1$d? Feeding history will stay available.</string>
+    <string name="dialog_btn_cancel">Cancel</string>
+    <string name="dialog_btn_delete">Delete</string>
+    <string name="dialog_title_reset_wifi">Reset Wi-Fi</string>
+    <string name="dialog_msg_reset_wifi_warn">Reset Wi-Fi will disconnect the device from the current network. You may need to reconnect to the device hotspot to configure new Wi-Fi.</string>
+    <string name="dialog_msg_reset_wifi_offline">\n\nThe device is offline, so this command may not be processed immediately.</string>
+    <string name="dialog_btn_reset">Reset</string>
+    <string name="status_sending_reset">Sending reset Wi-Fi command...</string>
+    <string name="reset_status_fmt">Reset Wi-Fi command #%1$d: %2$s</string>
+
+    <!-- Label strings -->
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_feeding">Feeding</string>
+    <string name="status_error">Error</string>
+    <string name="status_unknown">Unknown</string>
+    <string name="type_manual">Manual</string>
+    <string name="type_scheduled">Scheduled</string>
+    <string name="result_success">Success</string>
+    <string name="result_failed">Failed</string>
+
+    <!-- Sidebar / Device Management -->
+    <string name="menu_title">My Devices</string>
+    <string name="btn_add_device">Add Device</string>
+    <string name="dialog_title_add_device">Add New Device</string>
+    <string name="hint_device_name">Device name (e.g., My Feeder)</string>
+    <string name="dialog_btn_add">Add</string>
+    <string name="err_code_required">Device code is required.</string>
+    <string name="dialog_title_remove_device">Remove Device</string>
+    <string name="dialog_msg_remove_device">Remove device %1$s (%2$s) from your list?</string>
 </resources>

@@ -16,6 +16,9 @@ import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.SharedPreferences;
+import android.view.Gravity;
+import androidx.drawerlayout.widget.DrawerLayout;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -45,7 +48,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String BASE_URL = "https://smarthome-bjb2avf3d9craehs.eastasia-01.azurewebsites.net";
+    private static final String BASE_URL = "https://smarthome-bjb2avf3d9craehs.eastasia-01.azurewebsites.net/api/v1";
     private static final String[] PORTIONS = {"small", "medium", "large"};
     private static final long AUTO_REFRESH_MS = 30_000L;
 
@@ -53,9 +56,33 @@ public class MainActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<Schedule> schedules = new ArrayList<>();
 
+    private static final int SCREEN_HOME = 0;
+    private static final int SCREEN_FEED_NOW = 1;
+    private static final int SCREEN_SCHEDULES = 2;
+    private static final int SCREEN_FEEDING_LOGS = 3;
+    private static final int SCREEN_DEVICE_LOGS = 4;
+    private static final int SCREEN_WIFI = 5;
+
+    private int currentScreen = SCREEN_HOME;
+
+    private View screenHome;
+    private View screenFeedNow;
+    private View screenSchedules;
+    private View screenFeedingLogs;
+    private View screenDeviceLogs;
+    private View screenWifi;
+    private TextView wifiWarningText;
+
+    private DrawerLayout drawerLayout;
+    private android.widget.ImageView menuButton;
+    private TextView toolbarTitle;
+    private LinearLayout devicesListContainer;
+    private Button addDeviceButton;
     private SwipeRefreshLayout refreshLayout;
-    private EditText deviceCodeInput;
     private TextView baseUrlText;
+
+    private final List<Device> devices = new ArrayList<>();
+    private int activeDeviceIndex = 0;
     private TextView deviceNameText;
     private TextView deviceStatusText;
     private TextView offlineWarningText;
@@ -86,15 +113,23 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
 
         bindViews();
         configureControls();
         refreshAll(true);
+
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (currentScreen != SCREEN_HOME) {
+                    showScreen(SCREEN_HOME);
+                } else if (drawerLayout.isDrawerOpen(Gravity.LEFT)) {
+                    drawerLayout.closeDrawer(Gravity.LEFT);
+                } else {
+                    finish();
+                }
+            }
+        });
     }
 
     @Override
@@ -116,8 +151,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindViews() {
+        screenHome = findViewById(R.id.screenHome);
+        screenFeedNow = findViewById(R.id.screenFeedNow);
+        screenSchedules = findViewById(R.id.screenSchedules);
+        screenFeedingLogs = findViewById(R.id.screenFeedingLogs);
+        screenDeviceLogs = findViewById(R.id.screenDeviceLogs);
+        screenWifi = findViewById(R.id.screenWifi);
+        wifiWarningText = findViewById(R.id.wifiWarningText);
+
+        drawerLayout = findViewById(R.id.drawerLayout);
+        menuButton = findViewById(R.id.menuButton);
+        toolbarTitle = findViewById(R.id.toolbarTitle);
+        devicesListContainer = findViewById(R.id.devicesListContainer);
+        addDeviceButton = findViewById(R.id.addDeviceButton);
         refreshLayout = findViewById(R.id.refresh);
-        deviceCodeInput = findViewById(R.id.deviceCodeInput);
         baseUrlText = findViewById(R.id.baseUrlText);
         deviceNameText = findViewById(R.id.deviceNameText);
         deviceStatusText = findViewById(R.id.deviceStatusText);
@@ -137,21 +184,49 @@ public class MainActivity extends AppCompatActivity {
 
     private void configureControls() {
         baseUrlText.setText(BASE_URL);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, PORTIONS);
+        String[] displayPortions = {
+            getString(R.string.portion_small),
+            getString(R.string.portion_medium),
+            getString(R.string.portion_large)
+        };
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, displayPortions);
         newSchedulePortionSpinner.setAdapter(adapter);
         newSchedulePortionSpinner.setSelection(1);
 
-        findViewById(R.id.loadButton).setOnClickListener(v -> refreshAll(true));
+        menuButton.setOnClickListener(v -> {
+            if (currentScreen != SCREEN_HOME) {
+                showScreen(SCREEN_HOME);
+            } else {
+                if (drawerLayout.isDrawerOpen(Gravity.LEFT)) {
+                    drawerLayout.closeDrawer(Gravity.LEFT);
+                } else {
+                    drawerLayout.openDrawer(Gravity.LEFT);
+                }
+            }
+        });
         refreshLayout.setOnRefreshListener(() -> refreshAll(true));
         feedNowButton.setOnClickListener(v -> feedNow());
         addScheduleButton.setOnClickListener(v -> addSchedule());
         resetWifiButton.setOnClickListener(v -> confirmResetWifi());
+        addDeviceButton.setOnClickListener(v -> showAddDeviceDialog());
+
+        findViewById(R.id.tileFeed).setOnClickListener(v -> showScreen(SCREEN_FEED_NOW));
+        findViewById(R.id.tileSchedules).setOnClickListener(v -> showScreen(SCREEN_SCHEDULES));
+        findViewById(R.id.tileFeedingLogs).setOnClickListener(v -> showScreen(SCREEN_FEEDING_LOGS));
+        findViewById(R.id.tileDeviceLogs).setOnClickListener(v -> showScreen(SCREEN_DEVICE_LOGS));
+        findViewById(R.id.tileWifi).setOnClickListener(v -> showScreen(SCREEN_WIFI));
+
+        loadDevices();
+        renderSidebar();
+        if (devices.isEmpty()) {
+            mainHandler.post(this::showAddDeviceDialog);
+        }
     }
 
     private void refreshAll(boolean showSpinner) {
         String deviceCode = getDeviceCode();
         if (deviceCode.isEmpty()) {
-            setError("Enter a device code.");
+            setError(getString(R.string.err_enter_device_code));
             refreshLayout.setRefreshing(false);
             return;
         }
@@ -186,15 +261,15 @@ public class MainActivity extends AppCompatActivity {
 
     private void renderDevice(JSONObject device) {
         String code = device.optString("device_code", getDeviceCode());
-        String name = device.optString("device_name", "Pet feeder");
+        String name = device.optString("device_name", getString(R.string.default_device_name));
         currentStatus = device.optString("status", "unknown").toLowerCase(Locale.US);
-        String lastSeen = device.optString("last_seen", "No last seen time");
+        String lastSeen = device.optString("last_seen", getString(R.string.no_last_seen));
 
         deviceNameText.setText(name + " (" + code + ")");
-        deviceStatusText.setText("Status: " + labelStatus(currentStatus) + "\nLast seen: " + lastSeen);
+        deviceStatusText.setText(getString(R.string.device_status_fmt, labelStatus(currentStatus), lastSeen));
         boolean offline = "offline".equals(currentStatus) || "error".equals(currentStatus);
         offlineWarningText.setVisibility(offline ? View.VISIBLE : View.GONE);
-        offlineWarningText.setText("Warning: device is " + labelStatus(currentStatus).toLowerCase(Locale.US) + ". Commands may not run immediately.");
+        offlineWarningText.setText(getString(R.string.offline_warning_fmt, labelStatus(currentStatus).toLowerCase(Locale.US)));
     }
 
     private void renderSchedules(JSONArray array) {
@@ -210,7 +285,7 @@ public class MainActivity extends AppCompatActivity {
             schedulesContainer.addView(createScheduleView(schedule));
         }
         if (schedules.isEmpty()) {
-            schedulesContainer.addView(simpleText("No schedules yet.", true));
+            schedulesContainer.addView(simpleText(getString(R.string.no_schedules), true));
         }
     }
 
@@ -218,21 +293,22 @@ public class MainActivity extends AppCompatActivity {
         MaterialCardView card = new MaterialCardView(this);
         card.setCardElevation(0);
         card.setStrokeWidth(dp(1));
-        card.setStrokeColor(Color.rgb(218, 225, 230));
-        card.setRadius(dp(8));
+        card.setStrokeColor(Color.rgb(226, 232, 240));
+        card.setRadius(dp(16));
+        card.setCardBackgroundColor(android.content.res.ColorStateList.valueOf(Color.WHITE));
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        cardParams.setMargins(0, dp(8), 0, 0);
+        cardParams.setMargins(0, dp(12), 0, 0);
         card.setLayoutParams(cardParams);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(12), dp(12), dp(12), dp(12));
+        body.setPadding(dp(16), dp(16), dp(16), dp(16));
 
-        TextView title = simpleText("Schedule #" + schedule.id, false);
-        title.setTextColor(Color.rgb(23, 32, 38));
+        TextView title = simpleText(getString(R.string.schedule_title_fmt, schedule.id), false);
+        title.setTextColor(Color.rgb(15, 23, 42));
         title.setTextSize(15);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         body.addView(title);
@@ -249,7 +325,12 @@ public class MainActivity extends AppCompatActivity {
         row.addView(timeInput, new LinearLayout.LayoutParams(0, dp(48), 1));
 
         Spinner portionSpinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, PORTIONS);
+        String[] displayPortions = {
+            getString(R.string.portion_small),
+            getString(R.string.portion_medium),
+            getString(R.string.portion_large)
+        };
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, displayPortions);
         portionSpinner.setAdapter(adapter);
         portionSpinner.setSelection(portionIndex(schedule.portionSize));
         LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(0, dp(48), 1);
@@ -258,20 +339,24 @@ public class MainActivity extends AppCompatActivity {
         body.addView(row);
 
         Switch activeSwitch = new Switch(this);
-        activeSwitch.setText(schedule.isActive ? "Active" : "Inactive");
+        activeSwitch.setText(schedule.isActive ? getString(R.string.status_active) : getString(R.string.status_inactive));
         activeSwitch.setChecked(schedule.isActive);
-        activeSwitch.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> activeSwitch.setText(isChecked ? "Active" : "Inactive"));
+        activeSwitch.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> activeSwitch.setText(isChecked ? getString(R.string.status_active) : getString(R.string.status_inactive)));
         body.addView(activeSwitch);
 
-        TextView meta = simpleText("Created: " + schedule.createdAt + "\nUpdated: " + schedule.updatedAt, true);
+        TextView meta = simpleText(getString(R.string.schedule_meta_fmt, schedule.createdAt, schedule.updatedAt), true);
         body.addView(meta);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         Button updateButton = new Button(this);
-        updateButton.setText("Update");
+        updateButton.setText(getString(R.string.btn_update));
+        updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(99, 102, 241)));
+        updateButton.setTextColor(Color.WHITE);
         Button deleteButton = new Button(this);
-        deleteButton.setText("Delete");
+        deleteButton.setText(getString(R.string.btn_delete));
+        deleteButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(239, 68, 68)));
+        deleteButton.setTextColor(Color.WHITE);
         actions.addView(updateButton, new LinearLayout.LayoutParams(0, dp(48), 1));
         LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(0, dp(48), 1);
         deleteParams.setMargins(dp(8), 0, 0, 0);
@@ -281,7 +366,7 @@ public class MainActivity extends AppCompatActivity {
         updateButton.setOnClickListener(v -> updateSchedule(
                 schedule,
                 timeInput.getText().toString().trim(),
-                portionSpinner.getSelectedItem().toString(),
+                PORTIONS[portionSpinner.getSelectedItemPosition()],
                 activeSwitch.isChecked()
         ));
         deleteButton.setOnClickListener(v -> deleteSchedule(schedule));
@@ -293,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
     private void renderFeedingLogs(JSONArray array) {
         feedingLogsContainer.removeAllViews();
         if (array.length() == 0) {
-            feedingLogsContainer.addView(simpleText("No feeding history.", true));
+            feedingLogsContainer.addView(simpleText(getString(R.string.no_feeding_history), true));
             return;
         }
         for (int i = 0; i < array.length(); i++) {
@@ -313,7 +398,7 @@ public class MainActivity extends AppCompatActivity {
     private void renderDeviceLogs(JSONArray array) {
         deviceLogsContainer.removeAllViews();
         if (array.length() == 0) {
-            deviceLogsContainer.addView(simpleText("No device logs.", true));
+            deviceLogsContainer.addView(simpleText(getString(R.string.no_device_logs), true));
             return;
         }
         for (int i = 0; i < array.length(); i++) {
@@ -330,20 +415,20 @@ public class MainActivity extends AppCompatActivity {
     private void feedNow() {
         String portion = selectedFeedPortion();
         if (portion.isEmpty()) {
-            setError("Choose a portion size before feeding.");
+            setError(getString(R.string.err_choose_portion));
             return;
         }
         if ("offline".equals(currentStatus)) {
-            Toast.makeText(this, "Device is offline. The command may stay pending.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.warn_device_offline), Toast.LENGTH_LONG).show();
         }
         setBusy(true);
-        commandStatusText.setText("Sending feed command...");
+        commandStatusText.setText(getString(R.string.status_sending_feed));
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject().put("portion_size", portion);
                 JSONObject response = requestObject("POST", "/devices/" + getDeviceCode() + "/commands/feed-now", body);
                 mainHandler.post(() -> {
-                    commandStatusText.setText("Command #" + response.optInt("command_id") + ": " + response.optString("status", "pending"));
+                    commandStatusText.setText(getString(R.string.command_status_fmt, response.optInt("command_id"), response.optString("status", "pending")));
                     setError("");
                     setBusy(false);
                     refreshAll(false);
@@ -360,7 +445,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void addSchedule() {
         String time = newScheduleTimeInput.getText().toString().trim();
-        String portion = newSchedulePortionSpinner.getSelectedItem().toString();
+        String portion = PORTIONS[newSchedulePortionSpinner.getSelectedItemPosition()];
         if (!validateScheduleInput(0, time, true)) {
             return;
         }
@@ -414,10 +499,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void deleteSchedule(Schedule schedule) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete schedule")
-                .setMessage("Delete schedule #" + schedule.id + "? Feeding history will stay available.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Delete", (dialog, which) -> {
+                .setTitle(getString(R.string.dialog_title_delete))
+                .setMessage(getString(R.string.dialog_msg_delete, schedule.id))
+                .setNegativeButton(getString(R.string.dialog_btn_cancel), null)
+                .setPositiveButton(getString(R.string.dialog_btn_delete), (dialog, which) -> {
                     setBusy(true);
                     executor.execute(() -> {
                         try {
@@ -439,27 +524,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void confirmResetWifi() {
-        String warning = "Reset Wi-Fi will disconnect the device from the current network. You may need to reconnect to the device hotspot to configure new Wi-Fi.";
+        String warning = getString(R.string.dialog_msg_reset_wifi_warn);
         if ("offline".equals(currentStatus)) {
-            warning += "\n\nThe device is offline, so this command may not be processed immediately.";
+            warning += getString(R.string.dialog_msg_reset_wifi_offline);
         }
         new AlertDialog.Builder(this)
-                .setTitle("Reset Wi-Fi")
+                .setTitle(getString(R.string.dialog_title_reset_wifi))
                 .setMessage(warning)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Reset", (dialog, which) -> resetWifi())
+                .setNegativeButton(getString(R.string.dialog_btn_cancel), null)
+                .setPositiveButton(getString(R.string.dialog_btn_reset), (dialog, which) -> resetWifi())
                 .show();
     }
 
     private void resetWifi() {
         setBusy(true);
-        commandStatusText.setText("Sending reset Wi-Fi command...");
+        commandStatusText.setText(getString(R.string.status_sending_reset));
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject().put("confirm", true);
                 JSONObject response = requestObject("POST", "/devices/" + getDeviceCode() + "/commands/reset-wifi", body);
                 mainHandler.post(() -> {
-                    commandStatusText.setText("Reset Wi-Fi command #" + response.optInt("command_id") + ": " + response.optString("status", "pending"));
+                    commandStatusText.setText(getString(R.string.reset_status_fmt, response.optInt("command_id"), response.optString("status", "pending")));
                     setError("");
                     setBusy(false);
                     refreshAll(false);
@@ -476,7 +561,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean validateScheduleInput(long editingId, String time, boolean willBeActive) {
         int minutes = parseTimeMinutes(time);
         if (minutes < 0) {
-            setError("Feed time is required in HH:mm format.");
+            setError(getString(R.string.err_invalid_time_fmt));
             return false;
         }
         if (!willBeActive) {
@@ -489,7 +574,7 @@ public class MainActivity extends AppCompatActivity {
             }
             int other = parseTimeMinutes(existing.feedTime);
             if (other >= 0 && Math.abs(minutes - other) < 5) {
-                setError("Schedules must be at least 5 minutes apart.");
+                setError(getString(R.string.err_schedule_conflict));
                 return false;
             }
         }
@@ -572,20 +657,20 @@ public class MainActivity extends AppCompatActivity {
         TextView textView = new TextView(this);
         textView.setText(text);
         textView.setTextSize(14);
-        textView.setTextColor(muted ? Color.rgb(98, 113, 122) : Color.rgb(23, 32, 38));
+        textView.setTextColor(muted ? Color.rgb(100, 116, 139) : Color.rgb(15, 23, 42));
         textView.setPadding(0, dp(4), 0, dp(4));
         return textView;
     }
 
     private TextView logText(String text) {
         TextView textView = simpleText(text, false);
-        textView.setBackgroundColor(Color.WHITE);
-        textView.setPadding(dp(10), dp(8), dp(10), dp(8));
+        textView.setBackgroundResource(R.drawable.log_item_background);
+        textView.setPadding(dp(14), dp(12), dp(14), dp(12));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        params.setMargins(0, 0, 0, dp(8));
+        params.setMargins(0, 0, 0, dp(10));
         textView.setLayoutParams(params);
         return textView;
     }
@@ -601,7 +686,255 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String getDeviceCode() {
-        return deviceCodeInput.getText().toString().trim().toUpperCase(Locale.US);
+        if (devices.isEmpty() || activeDeviceIndex >= devices.size()) {
+            return "";
+        }
+        return devices.get(activeDeviceIndex).code;
+    }
+
+    private void showScreen(int screen) {
+        currentScreen = screen;
+        
+        screenHome.setVisibility(View.GONE);
+        screenFeedNow.setVisibility(View.GONE);
+        screenSchedules.setVisibility(View.GONE);
+        screenFeedingLogs.setVisibility(View.GONE);
+        screenDeviceLogs.setVisibility(View.GONE);
+        screenWifi.setVisibility(View.GONE);
+
+        setError("");
+
+        switch (screen) {
+            case SCREEN_HOME:
+                screenHome.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_menu);
+                if (!devices.isEmpty()) {
+                    toolbarTitle.setText(devices.get(activeDeviceIndex).name);
+                } else {
+                    toolbarTitle.setText(R.string.app_name);
+                }
+                break;
+            case SCREEN_FEED_NOW:
+                screenFeedNow.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_back);
+                toolbarTitle.setText(R.string.title_feed_now);
+                break;
+            case SCREEN_SCHEDULES:
+                screenSchedules.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_back);
+                toolbarTitle.setText(R.string.title_schedules);
+                break;
+            case SCREEN_FEEDING_LOGS:
+                screenFeedingLogs.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_back);
+                toolbarTitle.setText(R.string.title_feeding_history);
+                break;
+            case SCREEN_DEVICE_LOGS:
+                screenDeviceLogs.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_back);
+                toolbarTitle.setText(R.string.title_device_logs);
+                break;
+            case SCREEN_WIFI:
+                screenWifi.setVisibility(View.VISIBLE);
+                menuButton.setImageResource(R.drawable.ic_back);
+                toolbarTitle.setText(R.string.btn_reset_wifi);
+                String warn = getString(R.string.dialog_msg_reset_wifi_warn);
+                if ("offline".equals(currentStatus)) {
+                    warn += getString(R.string.dialog_msg_reset_wifi_offline);
+                }
+                wifiWarningText.setText(warn);
+                break;
+        }
+    }
+
+    private void loadDevices() {
+        devices.clear();
+        SharedPreferences prefs = getSharedPreferences("SmartHomeAppPrefs", MODE_PRIVATE);
+        String json = prefs.getString("devices", null);
+        if (json != null) {
+            try {
+                JSONArray array = new JSONArray(json);
+                for (int i = 0; i < array.length(); i++) {
+                    devices.add(Device.fromJson(array.getJSONObject(i)));
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+        // Do not add default device PF001 on empty load. Keep it empty to trigger "Add Device" on startup.
+        activeDeviceIndex = prefs.getInt("active_device_index", 0);
+        if (activeDeviceIndex >= devices.size()) {
+            activeDeviceIndex = 0;
+        }
+    }
+
+    private void saveDevices() {
+        SharedPreferences prefs = getSharedPreferences("SmartHomeAppPrefs", MODE_PRIVATE);
+        JSONArray array = new JSONArray();
+        try {
+            for (Device dev : devices) {
+                array.put(dev.toJson());
+            }
+            prefs.edit()
+                 .putString("devices", array.toString())
+                 .putInt("active_device_index", activeDeviceIndex)
+                 .apply();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void renderSidebar() {
+        devicesListContainer.removeAllViews();
+        for (int i = 0; i < devices.size(); i++) {
+            final int index = i;
+            Device dev = devices.get(i);
+
+            LinearLayout itemLayout = new LinearLayout(this);
+            itemLayout.setOrientation(LinearLayout.HORIZONTAL);
+            itemLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            itemLayout.setPadding(dp(16), dp(12), dp(16), dp(12));
+            
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            itemParams.setMargins(dp(8), dp(4), dp(8), dp(4));
+            itemLayout.setLayoutParams(itemParams);
+
+            if (i == activeDeviceIndex) {
+                itemLayout.setBackgroundResource(R.drawable.active_item_background);
+            } else {
+                itemLayout.setBackgroundResource(android.R.drawable.list_selector_background);
+            }
+
+            TextView infoText = new TextView(this);
+            infoText.setText(dev.name + " (" + dev.code + ")");
+            infoText.setTextColor(Color.rgb(15, 23, 42));
+            infoText.setTextSize(16);
+            if (i == activeDeviceIndex) {
+                infoText.setTypeface(null, android.graphics.Typeface.BOLD);
+            }
+            LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            infoText.setLayoutParams(textParams);
+            itemLayout.addView(infoText);
+
+            TextView deleteBtn = new TextView(this);
+            deleteBtn.setText("✕");
+            deleteBtn.setTextSize(18);
+            deleteBtn.setTextColor(Color.rgb(239, 68, 68));
+            deleteBtn.setPadding(dp(8), dp(4), dp(8), dp(4));
+            deleteBtn.setOnClickListener(v -> confirmRemoveDevice(index));
+            itemLayout.addView(deleteBtn);
+
+            itemLayout.setOnClickListener(v -> {
+                activeDeviceIndex = index;
+                saveDevices();
+                renderSidebar();
+                drawerLayout.closeDrawer(Gravity.LEFT);
+                showScreen(SCREEN_HOME);
+                refreshAll(true);
+            });
+
+            devicesListContainer.addView(itemLayout);
+        }
+
+        if (!devices.isEmpty()) {
+            Device active = devices.get(activeDeviceIndex);
+            toolbarTitle.setText(active.name);
+        }
+    }
+
+    private void confirmRemoveDevice(int index) {
+        Device dev = devices.get(index);
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.dialog_title_remove_device))
+                .setMessage(getString(R.string.dialog_msg_remove_device, dev.name, dev.code))
+                .setNegativeButton(getString(R.string.dialog_btn_cancel), null)
+                .setPositiveButton(getString(R.string.btn_delete), (dialog, which) -> {
+                    devices.remove(index);
+                    if (activeDeviceIndex >= devices.size()) {
+                        activeDeviceIndex = Math.max(0, devices.size() - 1);
+                    }
+                    if (devices.isEmpty()) {
+                        activeDeviceIndex = 0;
+                        saveDevices();
+                        renderSidebar();
+                        refreshAll(true);
+                        showAddDeviceDialog();
+                    } else {
+                        saveDevices();
+                        renderSidebar();
+                        refreshAll(true);
+                    }
+                })
+                .show();
+    }
+
+    private void showAddDeviceDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(24), dp(16), dp(24), dp(16));
+
+        final EditText codeInput = new EditText(this);
+        codeInput.setHint(getString(R.string.hint_device_code));
+        codeInput.setSingleLine(true);
+        codeInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        layout.addView(codeInput);
+
+        final EditText nameInput = new EditText(this);
+        nameInput.setHint(getString(R.string.hint_device_name));
+        nameInput.setSingleLine(true);
+        nameInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        nameParams.setMargins(0, dp(12), 0, 0);
+        nameInput.setLayoutParams(nameParams);
+        layout.addView(nameInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.dialog_title_add_device))
+                .setView(layout)
+                .setNegativeButton(getString(R.string.dialog_btn_cancel), null)
+                .setPositiveButton(getString(R.string.dialog_btn_add), (dialog, which) -> {
+                    String code = codeInput.getText().toString().trim().toUpperCase(Locale.US);
+                    String name = nameInput.getText().toString().trim();
+                    if (code.isEmpty()) {
+                        Toast.makeText(this, getString(R.string.err_code_required), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    if (name.isEmpty()) {
+                        name = getString(R.string.default_device_name);
+                    }
+                    Device dev = new Device(code, name);
+                    devices.add(dev);
+                    activeDeviceIndex = devices.size() - 1;
+                    saveDevices();
+                    renderSidebar();
+                    drawerLayout.closeDrawer(Gravity.LEFT);
+                    refreshAll(true);
+                })
+                .show();
+    }
+
+    private static class Device {
+        final String code;
+        final String name;
+
+        Device(String code, String name) {
+            this.code = code;
+            this.name = name;
+        }
+
+        JSONObject toJson() throws JSONException {
+            return new JSONObject().put("code", code).put("name", name);
+        }
+
+        static Device fromJson(JSONObject json) {
+            return new Device(json.optString("code"), json.optString("name"));
+        }
     }
 
     private String selectedFeedPortion() {
@@ -646,26 +979,26 @@ public class MainActivity extends AppCompatActivity {
     private String labelStatus(String status) {
         switch (status) {
             case "online":
-                return "Online";
+                return getString(R.string.status_online);
             case "offline":
-                return "Offline";
+                return getString(R.string.status_offline);
             case "feeding":
-                return "Feeding";
+                return getString(R.string.status_feeding);
             case "error":
-                return "Error";
+                return getString(R.string.status_error);
             default:
-                return "Unknown";
+                return getString(R.string.status_unknown);
         }
     }
 
     private String labelPortion(String portion) {
         switch (portion) {
             case "small":
-                return "Small";
+                return getString(R.string.portion_small);
             case "medium":
-                return "Medium";
+                return getString(R.string.portion_medium);
             case "large":
-                return "Large";
+                return getString(R.string.portion_large);
             default:
                 return portion;
         }
@@ -673,20 +1006,20 @@ public class MainActivity extends AppCompatActivity {
 
     private String labelFeedType(String type) {
         if ("manual".equals(type)) {
-            return "Manual";
+            return getString(R.string.type_manual);
         }
         if ("scheduled".equals(type)) {
-            return "Scheduled";
+            return getString(R.string.type_scheduled);
         }
         return type;
     }
 
     private String labelResult(String status) {
         if ("success".equals(status)) {
-            return "Success";
+            return getString(R.string.result_success);
         }
         if ("failed".equals(status)) {
-            return "Failed";
+            return getString(R.string.result_failed);
         }
         return status;
     }

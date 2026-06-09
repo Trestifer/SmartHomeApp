@@ -1,0 +1,70 @@
+<resources>
+    <string name="app_name">Máy Cho Thú Cưng Ăn</string>
+    <string name="hint_device_code">Mã thiết bị</string>
+    <string name="btn_load">Tải</string>
+    <string name="title_device">Thiết bị</string>
+    <string name="text_no_device">Chưa tải thiết bị</string>
+    <string name="title_feed_now">Cho ăn ngay</string>
+    <string name="portion_small">Nhỏ</string>
+    <string name="portion_medium">Vừa</string>
+    <string name="portion_large">Lớn</string>
+    <string name="title_schedules">Lịch trình</string>
+    <string name="hint_time">HH:mm</string>
+    <string name="btn_add_schedule">Thêm lịch trình</string>
+    <string name="btn_reset_wifi">Đặt lại Wi-Fi</string>
+    <string name="title_feeding_history">Lịch sử cho ăn</string>
+    <string name="title_device_logs">Nhật ký thiết bị</string>
+
+    <!-- Java Strings -->
+    <string name="err_enter_device_code">Vui lòng nhập mã thiết bị.</string>
+    <string name="default_device_name">Máy cho ăn</string>
+    <string name="no_last_seen">Không có thời gian hoạt động cuối</string>
+    <string name="device_status_fmt">Trạng thái: %1$s\nHoạt động cuối: %2$s</string>
+    <string name="offline_warning_fmt">Cảnh báo: thiết bị đang %1$s. Lệnh có thể không thực hiện ngay lập tức.</string>
+    <string name="no_schedules">Chưa có lịch trình nào.</string>
+    <string name="schedule_title_fmt">Lịch trình số %1$d</string>
+    <string name="status_active">Hoạt động</string>
+    <string name="status_inactive">Không hoạt động</string>
+    <string name="schedule_meta_fmt">Đã tạo: %1$s\nCập nhật: %2$s</string>
+    <string name="btn_update">Cập nhật</string>
+    <string name="btn_delete">Xóa</string>
+    <string name="no_feeding_history">Chưa có lịch sử cho ăn.</string>
+    <string name="no_device_logs">Chưa có nhật ký thiết bị.</string>
+    <string name="err_choose_portion">Vui lòng chọn khẩu phần ăn trước khi cho ăn.</string>
+    <string name="warn_device_offline">Thiết bị đang ngoại tuyến. Lệnh có thể ở trạng thái chờ.</string>
+    <string name="status_sending_feed">Đang gửi lệnh cho ăn...</string>
+    <string name="command_status_fmt">Lệnh số %1$d: %2$s</string>
+    <string name="err_invalid_time_fmt">Thời gian cho ăn phải theo định dạng HH:mm.</string>
+    <string name="err_schedule_conflict">Các lịch trình phải cách nhau ít nhất 5 phút.</string>
+    <string name="dialog_title_delete">Xóa lịch trình</string>
+    <string name="dialog_msg_delete">Xóa lịch trình số %1$d? Lịch sử cho ăn vẫn sẽ được giữ lại.</string>
+    <string name="dialog_btn_cancel">Hủy</string>
+    <string name="dialog_btn_delete">Xóa</string>
+    <string name="dialog_title_reset_wifi">Đặt lại Wi-Fi</string>
+    <string name="dialog_msg_reset_wifi_warn">Đặt lại Wi-Fi sẽ ngắt kết nối thiết bị khỏi mạng hiện tại. Bạn có thể cần kết nối lại với điểm phát sóng của thiết bị để cấu hình Wi-Fi mới.</string>
+    <string name="dialog_msg_reset_wifi_offline">\n\nThiết bị đang ngoại tuyến, nên lệnh này có thể không được xử lý ngay lập tức.</string>
+    <string name="dialog_btn_reset">Đặt lại</string>
+    <string name="status_sending_reset">Đang gửi lệnh đặt lại Wi-Fi...</string>
+    <string name="reset_status_fmt">Lệnh đặt lại Wi-Fi số %1$d: %2$s</string>
+
+    <!-- Label strings -->
+    <string name="status_online">Trực tuyến</string>
+    <string name="status_offline">Ngoại tuyến</string>
+    <string name="status_feeding">Đang cho ăn</string>
+    <string name="status_error">Lỗi</string>
+    <string name="status_unknown">Không xác định</string>
+    <string name="type_manual">Thủ công</string>
+    <string name="type_scheduled">Theo lịch</string>
+    <string name="result_success">Thành công</string>
+    <string name="result_failed">Thất bại</string>
+
+    <!-- Sidebar / Device Management -->
+    <string name="menu_title">Thiết bị của tôi</string>
+    <string name="btn_add_device">Thêm thiết bị</string>
+    <string name="dialog_title_add_device">Thêm thiết bị mới</string>
+    <string name="hint_device_name">Tên thiết bị (VD: Máy cho ăn)</string>
+    <string name="dialog_btn_add">Thêm</string>
+    <string name="err_code_required">Yêu cầu nhập mã thiết bị.</string>
+    <string name="dialog_title_remove_device">Xóa thiết bị</string>
+    <string name="dialog_msg_remove_device">Xóa thiết bị %1$s (%2$s) khỏi danh sách?</string>
+</resources>
