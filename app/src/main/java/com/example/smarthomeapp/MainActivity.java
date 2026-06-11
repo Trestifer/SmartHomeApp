@@ -11,7 +11,9 @@ import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.NumberPicker;
 import android.widget.RadioGroup;
+import android.widget.AdapterView;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -44,8 +46,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.text.SimpleDateFormat;
+import java.text.ParseException;
 
 public class MainActivity extends AppCompatActivity {
     private static final String BASE_URL = "https://smarthome-bjb2avf3d9craehs.eastasia-01.azurewebsites.net/api/v1";
@@ -193,6 +198,10 @@ public class MainActivity extends AppCompatActivity {
         newSchedulePortionSpinner.setAdapter(adapter);
         newSchedulePortionSpinner.setSelection(1);
 
+        newScheduleTimeInput.setFocusableInTouchMode(false);
+        newScheduleTimeInput.setClickable(true);
+        newScheduleTimeInput.setOnClickListener(v -> showTimePickerDialog(newScheduleTimeInput, null));
+
         menuButton.setOnClickListener(v -> {
             if (currentScreen != SCREEN_HOME) {
                 showScreen(SCREEN_HOME);
@@ -263,7 +272,8 @@ public class MainActivity extends AppCompatActivity {
         String code = device.optString("device_code", getDeviceCode());
         String name = device.optString("device_name", getString(R.string.default_device_name));
         currentStatus = device.optString("status", "unknown").toLowerCase(Locale.US);
-        String lastSeen = device.optString("last_seen", getString(R.string.no_last_seen));
+        String lastSeen = formatDateTime(device.optString("last_seen", ""));
+        if (lastSeen.isEmpty()) lastSeen = getString(R.string.no_last_seen);
 
         deviceNameText.setText(name + " (" + code + ")");
         deviceStatusText.setText(getString(R.string.device_status_fmt, labelStatus(currentStatus), lastSeen));
@@ -319,6 +329,8 @@ public class MainActivity extends AppCompatActivity {
         row.setPadding(0, dp(8), 0, 0);
 
         EditText timeInput = new EditText(this);
+        timeInput.setFocusableInTouchMode(false);
+        timeInput.setClickable(true);
         timeInput.setSingleLine(true);
         timeInput.setText(schedule.feedTime);
         timeInput.setHint("HH:mm");
@@ -341,27 +353,61 @@ public class MainActivity extends AppCompatActivity {
         Switch activeSwitch = new Switch(this);
         activeSwitch.setText(schedule.isActive ? getString(R.string.status_active) : getString(R.string.status_inactive));
         activeSwitch.setChecked(schedule.isActive);
-        activeSwitch.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> activeSwitch.setText(isChecked ? getString(R.string.status_active) : getString(R.string.status_inactive)));
         body.addView(activeSwitch);
 
-        TextView meta = simpleText(getString(R.string.schedule_meta_fmt, schedule.createdAt, schedule.updatedAt), true);
+        TextView meta = simpleText(getString(R.string.schedule_meta_fmt,
+                formatDateTime(schedule.createdAt), formatDateTime(schedule.updatedAt)), true);
         body.addView(meta);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
+        // Update button — grey/disabled by default, blue/enabled when changes detected
         Button updateButton = new Button(this);
         updateButton.setText(getString(R.string.btn_update));
-        updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(99, 102, 241)));
+        updateButton.setEnabled(false);
+        updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(180, 180, 180)));
         updateButton.setTextColor(Color.WHITE);
+
         Button deleteButton = new Button(this);
         deleteButton.setText(getString(R.string.btn_delete));
         deleteButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(239, 68, 68)));
         deleteButton.setTextColor(Color.WHITE);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.addView(updateButton, new LinearLayout.LayoutParams(0, dp(48), 1));
         LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(0, dp(48), 1);
         deleteParams.setMargins(dp(8), 0, 0, 0);
         actions.addView(deleteButton, deleteParams);
         body.addView(actions);
+
+        // Change detection: compare current field values vs saved schedule
+        Runnable checkDirty = () -> {
+            boolean timeChanged = !timeInput.getText().toString().trim().equals(schedule.feedTime);
+            boolean portionChanged = portionIndex(PORTIONS[portionSpinner.getSelectedItemPosition()]) != portionIndex(schedule.portionSize);
+            boolean activeChanged = activeSwitch.isChecked() != schedule.isActive;
+            boolean dirty = timeChanged || portionChanged || activeChanged;
+            updateButton.setEnabled(dirty);
+            updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                    dirty ? Color.rgb(99, 102, 241) : Color.rgb(180, 180, 180)));
+        };
+
+        // Hook time picker — run checkDirty after user confirms
+        timeInput.setOnClickListener(v -> showTimePickerDialog(timeInput, checkDirty));
+
+        // Hook spinner — skip the initial programmatic selection (firstSpinnerCall)
+        final boolean[] firstSpinnerCall = {true};
+        portionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (firstSpinnerCall[0]) { firstSpinnerCall[0] = false; return; }
+                checkDirty.run();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        // Hook switch
+        activeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            activeSwitch.setText(isChecked ? getString(R.string.status_active) : getString(R.string.status_inactive));
+            checkDirty.run();
+        });
 
         updateButton.setOnClickListener(v -> updateSchedule(
                 schedule,
@@ -375,6 +421,79 @@ public class MainActivity extends AppCompatActivity {
         return card;
     }
 
+    private void showTimePickerDialog(EditText editText, Runnable onPicked) {
+        int initHour = 18;
+        int initMinute = 0;
+        String currentText = editText.getText().toString().trim();
+        if (currentText.contains(":")) {
+            try {
+                String[] parts = currentText.split(":");
+                initHour = Integer.parseInt(parts[0]);
+                initMinute = Integer.parseInt(parts[1]);
+            } catch (NumberFormatException e) {
+                // Use default
+            }
+        } else {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            initHour = c.get(java.util.Calendar.HOUR_OF_DAY);
+            initMinute = c.get(java.util.Calendar.MINUTE);
+        }
+
+        // Track scrolled values reliably via listener (getValue() alone can miss in-flight scroll)
+        final int[] selectedHour = {initHour};
+        final int[] selectedMinute = {initMinute};
+
+        // Build the scroll-wheel container
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.HORIZONTAL);
+        container.setGravity(android.view.Gravity.CENTER);
+        container.setPadding(dp(24), dp(16), dp(24), dp(8));
+
+        // Hour picker
+        NumberPicker hourPicker = new NumberPicker(this);
+        hourPicker.setMinValue(0);
+        hourPicker.setMaxValue(23);
+        hourPicker.setValue(initHour);
+        hourPicker.setFormatter(value -> String.format(java.util.Locale.US, "%02d", value));
+        hourPicker.setWrapSelectorWheel(true);
+        hourPicker.setOnValueChangedListener((picker, oldVal, newVal) -> selectedHour[0] = newVal);
+
+        // Separator label
+        TextView colon = new TextView(this);
+        colon.setText(":");
+        colon.setTextSize(28);
+        colon.setTypeface(null, android.graphics.Typeface.BOLD);
+        colon.setTextColor(Color.rgb(15, 23, 42));
+        colon.setPadding(dp(12), 0, dp(12), 0);
+        colon.setGravity(android.view.Gravity.CENTER);
+
+        // Minute picker
+        NumberPicker minutePicker = new NumberPicker(this);
+        minutePicker.setMinValue(0);
+        minutePicker.setMaxValue(59);
+        minutePicker.setValue(initMinute);
+        minutePicker.setFormatter(value -> String.format(java.util.Locale.US, "%02d", value));
+        minutePicker.setWrapSelectorWheel(true);
+        minutePicker.setOnValueChangedListener((picker, oldVal, newVal) -> selectedMinute[0] = newVal);
+
+        container.addView(hourPicker);
+        container.addView(colon);
+        container.addView(minutePicker);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Ch\u1ecdn gi\u1edd")
+                .setView(container)
+                .setPositiveButton("OK", (dialog, which) -> {
+                    String timeStr = String.format(java.util.Locale.US, "%02d:%02d",
+                            selectedHour[0], selectedMinute[0]);
+                    editText.setText(timeStr);
+                    editText.invalidate();
+                    if (onPicked != null) onPicked.run();
+                })
+                .setNegativeButton("H\u1ee7y", null)
+                .show();
+    }
+
     private void renderFeedingLogs(JSONArray array) {
         feedingLogsContainer.removeAllViews();
         if (array.length() == 0) {
@@ -386,7 +505,7 @@ public class MainActivity extends AppCompatActivity {
             if (log == null) {
                 continue;
             }
-            String text = log.optString("fed_at", "") + "\n"
+            String text = formatDateTime(log.optString("fed_at", "")) + "\n"
                     + labelFeedType(log.optString("feed_type", "")) + " | "
                     + labelPortion(log.optString("portion_size", "")) + " | "
                     + labelResult(log.optString("status", "")) + "\n"
@@ -406,9 +525,27 @@ public class MainActivity extends AppCompatActivity {
             if (log == null) {
                 continue;
             }
-            String text = log.optString("created_at", "") + "\n"
+            String text = formatDateTime(log.optString("created_at", "")) + "\n"
                     + log.optString("log_type", "info") + ": " + log.optString("message", "");
             deviceLogsContainer.addView(logText(text));
+        }
+    }
+
+    /** Parse ISO-8601 UTC timestamp and return "HH:mm, dd/MM/yyyy" in local time. */
+    private String formatDateTime(String iso) {
+        if (iso == null || iso.isEmpty()) return "";
+        try {
+            SimpleDateFormat parser = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+            parser.setTimeZone(TimeZone.getTimeZone("UTC"));
+            // Handle optional fractional seconds and Z suffix
+            String clean = iso.replaceAll("\\.\\d+", "").replace("Z", "");
+            java.util.Date date = parser.parse(clean);
+            if (date == null) return iso;
+            SimpleDateFormat formatter = new SimpleDateFormat("HH:mm, dd/MM/yyyy", new Locale("vi", "VN"));
+            formatter.setTimeZone(TimeZone.getDefault());
+            return formatter.format(date);
+        } catch (ParseException e) {
+            return iso; // Return raw if parsing fails
         }
     }
 
