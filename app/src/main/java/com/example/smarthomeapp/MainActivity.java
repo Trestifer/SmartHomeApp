@@ -301,41 +301,72 @@ public class MainActivity extends AppCompatActivity {
 
     private View createScheduleView(Schedule schedule) {
         MaterialCardView card = new MaterialCardView(this);
-        card.setCardElevation(0);
+        card.setCardElevation(dp(2));
         card.setStrokeWidth(dp(1));
-        card.setStrokeColor(Color.rgb(226, 232, 240));
+        card.setStrokeColor(Color.rgb(226, 232, 240)); // Slate-200
         card.setRadius(dp(16));
         card.setCardBackgroundColor(android.content.res.ColorStateList.valueOf(Color.WHITE));
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        cardParams.setMargins(0, dp(12), 0, 0);
+        cardParams.setMargins(0, dp(14), 0, 0);
         card.setLayoutParams(cardParams);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(16), dp(16), dp(16), dp(16));
 
-        TextView title = simpleText(getString(R.string.schedule_title_fmt, schedule.id), false);
-        title.setTextColor(Color.rgb(15, 23, 42));
-        title.setTextSize(15);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        body.addView(title);
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(8), 0, 0);
+        // Top Row: Time Text and Switch
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
 
         EditText timeInput = new EditText(this);
         timeInput.setFocusableInTouchMode(false);
         timeInput.setClickable(true);
         timeInput.setSingleLine(true);
         timeInput.setText(schedule.feedTime);
-        timeInput.setHint("HH:mm");
-        row.addView(timeInput, new LinearLayout.LayoutParams(0, dp(48), 1));
+        timeInput.setTextSize(26);
+        timeInput.setTypeface(null, android.graphics.Typeface.BOLD);
+        timeInput.setTextColor(Color.rgb(15, 23, 42)); // Slate-900
+        timeInput.setBackground(null); // Borderless
+        timeInput.setPadding(0, 0, 0, 0);
+        topRow.addView(timeInput, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
 
+        Switch activeSwitch = new Switch(this);
+        activeSwitch.setChecked(schedule.isActive);
+        topRow.addView(activeSwitch, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        body.addView(topRow);
+
+        // Middle Row: Portion Badge and Spinner
+        LinearLayout middleRow = new LinearLayout(this);
+        middleRow.setOrientation(LinearLayout.HORIZONTAL);
+        middleRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        middleRow.setPadding(0, dp(8), 0, 0);
+
+        TextView portionBadge = new TextView(this);
+        portionBadge.setText("Khẩu phần: " + labelPortion(schedule.portionSize));
+        portionBadge.setTextSize(12);
+        portionBadge.setTypeface(null, android.graphics.Typeface.BOLD);
+        portionBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
+        
+        android.graphics.drawable.GradientDrawable badgeBg = new android.graphics.drawable.GradientDrawable();
+        badgeBg.setCornerRadius(dp(6));
+        if ("small".equals(schedule.portionSize)) {
+            badgeBg.setColor(Color.rgb(239, 246, 255)); // Blue-50
+            portionBadge.setTextColor(Color.rgb(29, 78, 216)); // Blue-700
+        } else if ("medium".equals(schedule.portionSize)) {
+            badgeBg.setColor(Color.rgb(255, 247, 237)); // Orange-50
+            portionBadge.setTextColor(Color.rgb(194, 65, 12)); // Orange-700
+        } else {
+            badgeBg.setColor(Color.rgb(250, 245, 255)); // Purple-50
+            portionBadge.setTextColor(Color.rgb(126, 34, 206)); // Purple-700
+        }
+        portionBadge.setBackground(badgeBg);
+        middleRow.addView(portionBadge);
+
+        // Spinner to change portion
         Spinner portionSpinner = new Spinner(this);
         String[] displayPortions = {
             getString(R.string.portion_small),
@@ -345,39 +376,52 @@ public class MainActivity extends AppCompatActivity {
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, displayPortions);
         portionSpinner.setAdapter(adapter);
         portionSpinner.setSelection(portionIndex(schedule.portionSize));
-        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36));
         spinnerParams.setMargins(dp(8), 0, 0, 0);
-        row.addView(portionSpinner, spinnerParams);
-        body.addView(row);
+        middleRow.addView(portionSpinner, spinnerParams);
+        body.addView(middleRow);
 
-        Switch activeSwitch = new Switch(this);
-        activeSwitch.setText(schedule.isActive ? getString(R.string.status_active) : getString(R.string.status_inactive));
-        activeSwitch.setChecked(schedule.isActive);
-        body.addView(activeSwitch);
-
+        // Meta Info
         TextView meta = simpleText(getString(R.string.schedule_meta_fmt,
                 formatDateTime(schedule.createdAt), formatDateTime(schedule.updatedAt)), true);
+        meta.setTextSize(11);
+        meta.setPadding(0, dp(8), 0, 0);
         body.addView(meta);
 
-        // Update button — grey/disabled by default, blue/enabled when changes detected
-        Button updateButton = new Button(this);
-        updateButton.setText(getString(R.string.btn_update));
-        updateButton.setEnabled(false);
-        updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(180, 180, 180)));
-        updateButton.setTextColor(Color.WHITE);
+        // Bottom Row: Action Buttons
+        LinearLayout actionsRow = new LinearLayout(this);
+        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionsRow.setGravity(android.view.Gravity.END);
+        actionsRow.setPadding(0, dp(12), 0, 0);
 
         Button deleteButton = new Button(this);
-        deleteButton.setText(getString(R.string.btn_delete));
-        deleteButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(239, 68, 68)));
+        deleteButton.setText("✕ Xóa");
+        deleteButton.setTextSize(13);
+        deleteButton.setAllCaps(false);
+        android.graphics.drawable.GradientDrawable deleteBg = new android.graphics.drawable.GradientDrawable();
+        deleteBg.setCornerRadius(dp(8));
+        deleteBg.setColor(Color.rgb(239, 68, 68)); // Rose-500
+        deleteButton.setBackground(deleteBg);
         deleteButton.setTextColor(Color.WHITE);
+        
+        Button updateButton = new Button(this);
+        updateButton.setText("Lưu");
+        updateButton.setTextSize(13);
+        updateButton.setAllCaps(false);
+        updateButton.setEnabled(false);
+        android.graphics.drawable.GradientDrawable updateBg = new android.graphics.drawable.GradientDrawable();
+        updateBg.setCornerRadius(dp(8));
+        updateBg.setColor(Color.rgb(241, 245, 249)); // Slate-100
+        updateButton.setBackground(updateBg);
+        updateButton.setTextColor(Color.rgb(148, 163, 184)); // Slate-400
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.addView(updateButton, new LinearLayout.LayoutParams(0, dp(48), 1));
-        LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(0, dp(48), 1);
-        deleteParams.setMargins(dp(8), 0, 0, 0);
-        actions.addView(deleteButton, deleteParams);
-        body.addView(actions);
+        LinearLayout.LayoutParams deleteBtnParams = new LinearLayout.LayoutParams(dp(80), dp(36));
+        actionsRow.addView(deleteButton, deleteBtnParams);
+
+        LinearLayout.LayoutParams updateBtnParams = new LinearLayout.LayoutParams(dp(80), dp(36));
+        updateBtnParams.setMargins(dp(8), 0, 0, 0);
+        actionsRow.addView(updateButton, updateBtnParams);
+        body.addView(actionsRow);
 
         // Change detection: compare current field values vs saved schedule
         Runnable checkDirty = () -> {
@@ -386,14 +430,24 @@ public class MainActivity extends AppCompatActivity {
             boolean activeChanged = activeSwitch.isChecked() != schedule.isActive;
             boolean dirty = timeChanged || portionChanged || activeChanged;
             updateButton.setEnabled(dirty);
-            updateButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
-                    dirty ? Color.rgb(99, 102, 241) : Color.rgb(180, 180, 180)));
+            
+            android.graphics.drawable.GradientDrawable uBg = new android.graphics.drawable.GradientDrawable();
+            uBg.setCornerRadius(dp(8));
+            if (dirty) {
+                uBg.setColor(Color.rgb(79, 70, 229)); // Indigo-600
+                updateButton.setBackground(uBg);
+                updateButton.setTextColor(Color.WHITE);
+            } else {
+                uBg.setColor(Color.rgb(241, 245, 249)); // Slate-100
+                updateButton.setBackground(uBg);
+                updateButton.setTextColor(Color.rgb(148, 163, 184)); // Slate-400
+            }
         };
 
         // Hook time picker — run checkDirty after user confirms
         timeInput.setOnClickListener(v -> showTimePickerDialog(timeInput, checkDirty));
 
-        // Hook spinner — skip the initial programmatic selection (firstSpinnerCall)
+        // Hook spinner
         final boolean[] firstSpinnerCall = {true};
         portionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -405,7 +459,6 @@ public class MainActivity extends AppCompatActivity {
 
         // Hook switch
         activeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            activeSwitch.setText(isChecked ? getString(R.string.status_active) : getString(R.string.status_inactive));
             checkDirty.run();
         });
 
