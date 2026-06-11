@@ -612,16 +612,22 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, getString(R.string.warn_device_offline), Toast.LENGTH_LONG).show();
         }
         setBusy(true);
-        commandStatusText.setText(getString(R.string.status_sending_feed));
+        commandStatusText.setText("Đang cho ăn...");
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject().put("portion_size", portion);
-                JSONObject response = requestObject("POST", "/devices/" + getDeviceCode() + "/commands/feed-now", body);
+                requestObject("POST", "/devices/" + getDeviceCode() + "/commands/feed-now", body);
                 mainHandler.post(() -> {
-                    commandStatusText.setText(getString(R.string.command_status_fmt, response.optInt("command_id"), response.optString("status", "pending")));
                     setError("");
                     setBusy(false);
                     refreshAll(false);
+                    
+                    // Clear the status text after 1 minute (60000 ms)
+                    mainHandler.postDelayed(() -> {
+                        if ("Đang cho ăn...".equals(commandStatusText.getText().toString())) {
+                            commandStatusText.setText("");
+                        }
+                    }, 60000L);
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
